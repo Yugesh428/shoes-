@@ -2,7 +2,7 @@ import express, { Router } from "express";
 import {
   registerUser,
   loginUser,
-} from "../../../controller/globals/auth/authController";
+} from "../../../controller/globals/authController";
 import asyncErrorHandler from "../../../services/asycnErrorHndler";
 
 const router: Router = express.Router();
