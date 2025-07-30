@@ -39,12 +39,11 @@ class Order extends Model {
     type: DataType.ENUM("pending", "completed", "cancelled"),
   })
   declare status: "pending" | "completed" | "cancelled";
-
   @Column({
-    type: DataType.STRING,
+    type: DataType.DOUBLE,
     allowNull: false,
   })
-  declare total_amount: string;
+  declare total_amount: number;
 }
 
 export default Order;

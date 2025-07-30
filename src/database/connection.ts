@@ -4,6 +4,7 @@ config();
 
 // ✅ Import the User model directly
 import User from "../database/models/userModel"; // make sure this path and export is correct
+import order from "../database/models/orderModel";
 
 const sequelize = new Sequelize({
   database: process.env.DB_NAME,
@@ -14,7 +15,7 @@ const sequelize = new Sequelize({
   port: Number(process.env.DB_PORT),
 
   // ✅ Use the actual model class, not a string path
-  models: [User],
+  models: [User, order],
 });
 
 sequelize
