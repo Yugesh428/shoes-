@@ -145,3 +145,11 @@ const updateOrderItem = async function (req: IExtendedRequest, res: Response) {
     });
   }
 };
+
+export {
+  createOrderItem,
+  getAllOrderItem,
+  getSingleOrderItemById,
+  updateOrderItem,
+  deleteOrderById,
+};
