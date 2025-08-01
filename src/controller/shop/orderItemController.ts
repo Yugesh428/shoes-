@@ -1,13 +1,15 @@
 import { Response } from "express";
 import { IExtendedRequest } from "../../middleware/type";
 import OrderItem from "../../database/models/oderItemModel";
-import { Sequelize } from "sequelize";
-import sequelize from "../../Database/connection";
+import sendMail from "../../middleware/sendMail";
+import Shoe from "../../database/models/shoesModel";
+import Order from "../../database/models/orderModel";
+import User from "../../database/models/userModel";
+import Address from "../../database/models/addressModel";
 
 const getAllOrderItem = async function (req: IExtendedRequest, res: Response) {
   try {
     const allItems = await OrderItem.findAll();
-
     res.status(200).json({
       message: "All order items fetched successfully",
       items: allItems,
@@ -24,24 +26,74 @@ const createOrderItem = async function (req: IExtendedRequest, res: Response) {
   try {
     const { id, orderId, shoeId, quantity, price } = req.body;
 
-    // Basic validation
     if (!orderId || !shoeId || !quantity || !price) {
       return res.status(400).json({
         message: "Missing required fields: orderId, shoeId, quantity, or price",
       });
     }
 
-    // Create new order item
     const newOrderItem = await OrderItem.create({
-      id, // optional, if you want to supply id; else omit and let UUID auto-generate
+      id,
       orderId,
       shoeId,
       quantity,
       price,
     });
 
+    const shoe = await Shoe.findByPk(shoeId);
+    const order = await Order.findByPk(orderId);
+    const user = await User.findByPk(order?.userId);
+
+    // Fetch user's address
+    const address = await Address.findOne({ where: { userId: user?.id } });
+
+    const total = (price * quantity).toFixed(2);
+
+    if (user && shoe) {
+      // Email to customer (same as before)
+      const customerMail = {
+        to: user.email,
+        subject: "🛍️ Your ShoeVerse Order Confirmation",
+        html: `
+          <h2>Hello ${user.username},</h2>
+          <p>Thanks for your order!</p>
+          <p><strong>Shoe:</strong> ${shoe.name}</p>
+          <p><strong>Quantity:</strong> ${quantity}</p>
+          <p><strong>Total:</strong> $${total}</p>
+        `,
+        text: `Order confirmed. Shoe: ${shoe.name}, Qty: ${quantity}, Total: $${total}`,
+      };
+      await sendMail(customerMail);
+
+      // Email to shop owner with address info
+      const shopMail = {
+        to: "bastolayugesh2@gmail.com",
+        subject: "📦 New Order Notification",
+        html: `
+          <h2>New Order Received</h2>
+          <p><strong>Customer:</strong> ${user.username} (${user.email})</p>
+          <p><strong>Address:</strong> ${
+            address
+              ? `
+            ${address.street}, ${address.city}, ${address.state}, ${address.country}, ${address.postalCode}
+          `
+              : "No address provided"
+          }</p>
+          <p><strong>Shoe:</strong> ${shoe.name}</p>
+          <p><strong>Quantity:</strong> ${quantity}</p>
+          <p><strong>Total:</strong> $${total}</p>
+        `,
+        text: `New order from ${user.username}. Address: ${
+          address
+            ? `${address.street}, ${address.city}, ${address.state}, ${address.country}, ${address.postalCode}`
+            : "No address provided"
+        }. Shoe: ${shoe.name}, Qty: ${quantity}, Total: $${total}`,
+      };
+      await sendMail(shopMail);
+    }
+
     res.status(201).json({
-      message: "Order item created successfully",
+      message: "Order item created and emails sent successfully",
       orderItem: newOrderItem,
     });
   } catch (error) {
@@ -58,8 +110,6 @@ const getSingleOrderItemById = async function (
 ) {
   try {
     const { id } = req.params;
-
-    // Fetching the order item by primary key (usually the id)
     const singleOrder = await OrderItem.findByPk(id);
 
     if (!singleOrder) {
@@ -70,7 +120,7 @@ const getSingleOrderItemById = async function (
 
     res.status(200).json({
       message: "Item fetched successfully",
-      orderItem: singleOrder, // Use key:value properly
+      orderItem: singleOrder,
     });
   } catch (error) {
     console.error(error);
@@ -83,7 +133,6 @@ const getSingleOrderItemById = async function (
 const deleteOrderById = async function (req: IExtendedRequest, res: Response) {
   try {
     const { id } = req.params;
-
     const singleOrder = await OrderItem.findByPk(id);
 
     if (!singleOrder) {
@@ -92,7 +141,7 @@ const deleteOrderById = async function (req: IExtendedRequest, res: Response) {
       });
     }
 
-    await singleOrder.destroy(); // Deletes the found record
+    await singleOrder.destroy();
 
     res.status(200).json({
       message: "Order item deleted successfully",
@@ -110,14 +159,12 @@ const updateOrderItem = async function (req: IExtendedRequest, res: Response) {
     const { id } = req.params;
     const { orderId, shoeId, quantity, price } = req.body;
 
-    // Check for missing fields
     if (!orderId || !shoeId || !quantity || !price) {
       return res.status(400).json({
         message: "Some fields are missing",
       });
     }
 
-    // Find existing item
     const existingOrderItem = await OrderItem.findByPk(id);
 
     if (!existingOrderItem) {
@@ -126,7 +173,6 @@ const updateOrderItem = async function (req: IExtendedRequest, res: Response) {
       });
     }
 
-    // Update fields using `.update()`
     await existingOrderItem.update({
       orderId,
       shoeId,
