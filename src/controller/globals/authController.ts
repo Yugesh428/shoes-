@@ -2,9 +2,8 @@ import { Request, Response } from "express";
 import User from "../../database/models/userModel";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import sendMail from "../../middleware/sendMail"; // Make sure this is working correctly
+import sendMail from "../../middleware/sendMail";
 
-// Register user
 const registerUser = async (req: Request, res: Response) => {
   const { username, password, email } = req.body;
 
