@@ -11,6 +11,7 @@ import orderRoute from "./routes/shop/orderRoute";
 import reviewRoute from "./routes/shop/reviewRoute";
 import addressRoute from "./routes/shop/addressRoute";
 import shoeRoute from "./routes/shop/shoeRoute";
+import categoryRoute from "./routes/shop/shoeCategoryRoute";
 
 app.use(express.json());
 app.use(
@@ -26,5 +27,6 @@ app.use("/api/shop/order", orderRoute);
 app.use("/api/shop/review", reviewRoute);
 app.use("/api/shop/address", addressRoute);
 app.use("/api/shop/shoe", shoeRoute);
+app.use("/api/shop/category", categoryRoute);
 
 export default app;

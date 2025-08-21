@@ -1,5 +1,5 @@
 import order from "../../database/models/orderModel";
-import sequelize from "../../Database/connection";
+import sequelize from "../../database/connection";
 import { IExtendedRequest } from "../../middleware/type";
 import { Response } from "express";
 

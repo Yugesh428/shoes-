@@ -6,6 +6,7 @@ import Shoe from "../../database/models/shoesModel";
 import Order from "../../database/models/orderModel";
 import User from "../../database/models/userModel";
 import Address from "../../database/models/addressModel";
+import sequelize from "../../database/connection";
 
 const getAllOrderItem = async function (req: IExtendedRequest, res: Response) {
   try {
@@ -23,34 +24,43 @@ const getAllOrderItem = async function (req: IExtendedRequest, res: Response) {
 };
 
 const createOrderItem = async function (req: IExtendedRequest, res: Response) {
+  const t = await sequelize.transaction();
   try {
     const { id, orderId, shoeId, quantity, price } = req.body;
 
     if (!orderId || !shoeId || !quantity || !price) {
+      await t.rollback();
       return res.status(400).json({
         message: "Missing required fields: orderId, shoeId, quantity, or price",
       });
     }
 
-    const newOrderItem = await OrderItem.create({
-      id,
-      orderId,
-      shoeId,
-      quantity,
-      price,
+    // Lock shoe row to prevent race condition
+    const shoe = await Shoe.findByPk(shoeId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
     });
+    if (!shoe) {
+      await t.rollback();
+      return res.status(404).json({ message: "Shoe not found" });
+    }
 
-    const shoe = await Shoe.findByPk(shoeId);
-    const order = await Order.findByPk(orderId);
-    const user = await User.findByPk(order?.userId);
+    // Create order item inside transaction
+    const newOrderItem = await OrderItem.create(
+      { id, orderId, shoeId, quantity, price },
+      { transaction: t }
+    );
 
-    // Fetch user's address
-    const address = await Address.findOne({ where: { userId: user?.id } });
+    const order = await Order.findByPk(orderId, { transaction: t });
+    const user = await User.findByPk(order?.userId, { transaction: t });
+    const address = await Address.findOne({
+      where: { userId: user?.id },
+      transaction: t,
+    });
 
     const total = (price * quantity).toFixed(2);
 
     if (user && shoe) {
-      // Email to customer (same as before)
       const customerMail = {
         to: user.email,
         subject: "🛍️ Your ShoeVerse Order Confirmation",
@@ -65,7 +75,6 @@ const createOrderItem = async function (req: IExtendedRequest, res: Response) {
       };
       await sendMail(customerMail);
 
-      // Email to shop owner with address info
       const shopMail = {
         to: "bastolayugesh2@gmail.com",
         subject: "📦 New Order Notification",
@@ -74,9 +83,7 @@ const createOrderItem = async function (req: IExtendedRequest, res: Response) {
           <p><strong>Customer:</strong> ${user.username} (${user.email})</p>
           <p><strong>Address:</strong> ${
             address
-              ? `
-            ${address.street}, ${address.city}, ${address.state}, ${address.country}, ${address.postalCode}
-          `
+              ? `${address.street}, ${address.city}, ${address.state}, ${address.country}, ${address.postalCode}`
               : "No address provided"
           }</p>
           <p><strong>Shoe:</strong> ${shoe.name}</p>
@@ -92,14 +99,66 @@ const createOrderItem = async function (req: IExtendedRequest, res: Response) {
       await sendMail(shopMail);
     }
 
+    await t.commit();
     res.status(201).json({
       message: "Order item created and emails sent successfully",
       orderItem: newOrderItem,
     });
   } catch (error) {
+    await t.rollback();
     console.error("Error creating order item:", error);
     res.status(500).json({
       message: "Unable to create order item",
+    });
+  }
+};
+
+const updateOrderItem = async function (req: IExtendedRequest, res: Response) {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { orderId, shoeId, quantity, price } = req.body;
+
+    if (!orderId || !shoeId || !quantity || !price) {
+      await t.rollback();
+      return res.status(400).json({
+        message: "Some fields are missing",
+      });
+    }
+
+    const existingOrderItem = await OrderItem.findByPk(id, { transaction: t });
+    if (!existingOrderItem) {
+      await t.rollback();
+      return res.status(404).json({
+        message: "Order item not found",
+      });
+    }
+
+    // Lock shoe row to prevent race condition
+    const shoe = await Shoe.findByPk(shoeId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!shoe) {
+      await t.rollback();
+      return res.status(404).json({ message: "Shoe not found" });
+    }
+
+    await existingOrderItem.update(
+      { orderId, shoeId, quantity, price },
+      { transaction: t }
+    );
+
+    await t.commit();
+    res.status(200).json({
+      message: "Order item updated successfully",
+      updatedItem: existingOrderItem,
+    });
+  } catch (error) {
+    await t.rollback();
+    console.error(error);
+    res.status(500).json({
+      message: "Unable to update item",
     });
   }
 };
@@ -113,9 +172,7 @@ const getSingleOrderItemById = async function (
     const singleOrder = await OrderItem.findByPk(id);
 
     if (!singleOrder) {
-      return res.status(404).json({
-        message: "Order item not found",
-      });
+      return res.status(404).json({ message: "Order item not found" });
     }
 
     res.status(200).json({
@@ -124,9 +181,7 @@ const getSingleOrderItemById = async function (
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: "Failed to fetch item",
-    });
+    res.status(500).json({ message: "Failed to fetch item" });
   }
 };
 
@@ -136,59 +191,14 @@ const deleteOrderById = async function (req: IExtendedRequest, res: Response) {
     const singleOrder = await OrderItem.findByPk(id);
 
     if (!singleOrder) {
-      return res.status(404).json({
-        message: "Order item not found",
-      });
+      return res.status(404).json({ message: "Order item not found" });
     }
 
     await singleOrder.destroy();
-
-    res.status(200).json({
-      message: "Order item deleted successfully",
-    });
+    res.status(200).json({ message: "Order item deleted successfully" });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: "Failed to delete order item",
-    });
-  }
-};
-
-const updateOrderItem = async function (req: IExtendedRequest, res: Response) {
-  try {
-    const { id } = req.params;
-    const { orderId, shoeId, quantity, price } = req.body;
-
-    if (!orderId || !shoeId || !quantity || !price) {
-      return res.status(400).json({
-        message: "Some fields are missing",
-      });
-    }
-
-    const existingOrderItem = await OrderItem.findByPk(id);
-
-    if (!existingOrderItem) {
-      return res.status(404).json({
-        message: "Order item not found",
-      });
-    }
-
-    await existingOrderItem.update({
-      orderId,
-      shoeId,
-      quantity,
-      price,
-    });
-
-    res.status(200).json({
-      message: "Order item updated successfully",
-      updatedItem: existingOrderItem,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: "Unable to update item",
-    });
+    res.status(500).json({ message: "Failed to delete order item" });
   }
 };
 
